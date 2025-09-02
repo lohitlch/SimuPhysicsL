@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anomalous Skin Effect Visualization</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e1e2e, #2d2d44);
+            color: white;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .title {
+            text-align: center;
+            font-size: 2.5em;
+            margin-bottom: 30px;
+            background: linear-gradient(45deg, #00d4ff, #ff4081);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 20px rgba(0, 212, 255, 0.3);
+        }
+        .controls {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin: 15px 0;
+            flex-wrap: wrap;
+        }
+        label {
+            font-weight: 600;
+            min-width: 120px;
+        }
+        input[type="range"] {
+            flex: 1;
+            min-width: 200px;
+        }
+        .value-display {
+            background: rgba(0, 212, 255, 0.2);
+            padding: 5px 10px;
+            border-radius: 8px;
+            min-width: 80px;
+            text-align: center;
+            font-weight: bold;
+        }
+        .visualization {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        .viz-panel {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            padding: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .viz-title {
+            font-size: 1.3em;
+            margin-bottom: 15px;
+            text-align: center;
+            color: #00d4ff;
+        }
+        canvas {
+            width: 100%;
+            height: 300px;
+            border-radius: 10px;
+            background: rgba(0, 0, 0, 0.3);
+        }
+        .info-panel {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            padding: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            margin-top: 20px;
+        }
+        .regime-indicator {
+            font-size: 1.2em;
+            font-weight: bold;
+            text-align: center;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            transition: all 0.3s ease;
+        }
+        .classical {
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+            color: white;
+        }
+        .anomalous {
+            background: linear-gradient(45deg, #00d4ff, #0066cc);
+            color: white;
+        }
+        @media (max-width: 768px) {
+            .visualization {
+                grid-template-columns: 1fr;
+            }
+            .control-group {
+                flex-direction: column;
+                align-items: stretch;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="title">Anomalous Skin Effect Visualization</h1>
+        
+        <div class="controls">
+            <div class="control-group">
+                <label>Mean Free Path (λ):</label>
+                <input type="range" id="meanFreePath" min="0.1" max="10" step="0.1" value="1">
+                <div class="value-display"><span id="mfpValue">1.0</span> δ₀</div>
+            </div>
+            <div class="control-group">
+                <label>Frequency:</label>
+                <input type="range" id="frequency" min="0.1" max="5" step="0.1" value="1">
+                <div class="value-display"><span id="freqValue">1.0</span> GHz</div>
+            </div>
+            <div class="control-group">
+                <label>Electron Angle:</label>
+                <input type="range" id="electronAngle" min="0" max="90" step="5" value="15">
+                <div class="value-display"><span id="angleValue">15</span>°</div>
+            </div>
+        </div>
+
+        <div class="regime-indicator" id="regimeIndicator">
+            Classical Skin Effect (λ << δ)
+        </div>
+
+        <div class="visualization">
+            <div class="viz-panel">
+                <div class="viz-title">Electric Field Penetration</div>
+                <canvas id="fieldCanvas"></canvas>
+            </div>
+            <div class="viz-panel">
+                <div class="viz-title">Electron Trajectories</div>
+                <canvas id="electronCanvas"></canvas>
+            </div>
+        </div>
+
+        <div class="info-panel">
+            <h3>Understanding the Physics:</h3>
+            <p><strong>Classical Regime (λ << δ):</strong> Electrons scatter frequently within the skin depth. Local conductivity applies.</p>
+            <p><strong>Anomalous Regime (λ >> δ):</strong> Electrons travel ballistically across multiple skin depths. Only grazing electrons interact effectively with the field.</p>
+            <p><strong>Key Insight:</strong> In the anomalous regime, the effective skin depth becomes <em>δ_eff ∝ (λδ₀)^(1/3)</em>, which is larger than the classical prediction δ₀.</p>
+        </div>
+    </div>
+
+    <script>
+        const meanFreePathSlider = document.getElementById('meanFreePath');
+        const frequencySlider = document.getElementById('frequency');
+        const electronAngleSlider = document.getElementById('electronAngle');
+        const mfpValue = document.getElementById('mfpValue');
+        const freqValue = document.getElementById('freqValue');
+        const angleValue = document.getElementById('angleValue');
+        const regimeIndicator = document.getElementById('regimeIndicator');
+
+        const fieldCanvas = document.getElementById('fieldCanvas');
+        const electronCanvas = document.getElementById('electronCanvas');
+        const fieldCtx = fieldCanvas.getContext('2d');
+        const electronCtx = electronCanvas.getContext('2d');
+
+        // Set canvas size
+        function resizeCanvases() {
+            const rect = fieldCanvas.getBoundingClientRect();
+            fieldCanvas.width = rect.width;
+            fieldCanvas.height = rect.height;
+            electronCanvas.width = rect.width;
+            electronCanvas.height = rect.height;
+        }
+        resizeCanvases();
+        window.addEventListener('resize', resizeCanvases);
+
+        function updateValues() {
+            const lambda = parseFloat(meanFreePathSlider.value);
+            const freq = parseFloat(frequencySlider.value);
+            const angle = parseFloat(electronAngleSlider.value);
+            
+            mfpValue.textContent = lambda.toFixed(1);
+            freqValue.textContent = freq.toFixed(1);
+            angleValue.textContent = angle.toString();
+            
+            // Update regime indicator
+            if (lambda > 2) {
+                regimeIndicator.textContent = `Anomalous Skin Effect (λ >> δ)`;
+                regimeIndicator.className = 'regime-indicator anomalous';
+            } else {
+                regimeIndicator.textContent = `Classical Skin Effect (λ ≤ δ)`;
+                regimeIndicator.className = 'regime-indicator classical';
+            }
+            
+            drawFieldPenetration(lambda, freq);
+            drawElectronTrajectories(lambda, angle);
+        }
+
+        function drawFieldPenetration(lambda, freq) {
+            const width = fieldCanvas.width;
+            const height = fieldCanvas.height;
+            
+            fieldCtx.clearRect(0, 0, width, height);
+            
+            // Classical skin depth (normalized)
+            const delta0 = 50; // pixels
+            const deltaEff = lambda > 2 ? Math.pow(lambda * delta0, 1/3) * 2 : delta0;
+            
+            // Draw metal surface
+            fieldCtx.fillStyle = '#444';
+            fieldCtx.fillRect(0, 0, width, height/6);
+            
+            // Draw field penetration
+            const gradient = fieldCtx.createLinearGradient(0, height/6, 0, height);
+            gradient.addColorStop(0, 'rgba(0, 212, 255, 1)');
+            gradient.addColorStop(deltaEff / height, 'rgba(0, 212, 255, 0.37)'); // e^(-1)
+            gradient.addColorStop(2 * deltaEff / height, 'rgba(0, 212, 255, 0.14)'); // e^(-2)
+            gradient.addColorStop(3 * deltaEff / height, 'rgba(0, 212, 255, 0.05)'); // e^(-3)
+            gradient.addColorStop(1, 'rgba(0, 212, 255, 0)');
+            
+            fieldCtx.fillStyle = gradient;
+            fieldCtx.fillRect(0, height/6, width, height * 5/6);
+            
+            // Draw skin depth markers
+            fieldCtx.strokeStyle = '#ff4081';
+            fieldCtx.setLineDash([5, 5]);
+            fieldCtx.lineWidth = 2;
+            
+            const yPos = height/6 + deltaEff;
+            fieldCtx.beginPath();
+            fieldCtx.moveTo(0, yPos);
+            fieldCtx.lineTo(width, yPos);
+            fieldCtx.stroke();
+            
+            // Label
+            fieldCtx.fillStyle = '#ff4081';
+            fieldCtx.font = '14px Arial';
+            fieldCtx.fillText(`δ_eff = ${(deltaEff/delta0).toFixed(1)}δ₀`, 10, yPos - 10);
+            
+            // Surface label
+            fieldCtx.fillStyle = 'white';
+            fieldCtx.fillText('Metal Surface', 10, height/6 - 10);
+        }
+
+        function drawElectronTrajectories(lambda, angle) {
+            const width = electronCanvas.width;
+            const height = electronCanvas.height;
+            
+            electronCtx.clearRect(0, 0, width, height);
+            
+            // Draw metal surface
+            electronCtx.fillStyle = '#444';
+            electronCtx.fillRect(0, 0, width, height/6);
+            
+            const skinDepth = 50;
+            const effectiveDepth = lambda > 2 ? Math.pow(lambda * skinDepth, 1/3) * 2 : skinDepth;
+            
+            // Draw multiple electron trajectories
+            const numElectrons = 8;
+            const angleRad = angle * Math.PI / 180;
+            
+            for (let i = 0; i < numElectrons; i++) {
+                const startX = (i + 0.5) * width / numElectrons;
+                const startY = height/6;
+                
+                // Calculate trajectory
+                const dx = lambda * 10 * Math.cos(angleRad);
+                const dy = lambda * 10 * Math.sin(angleRad);
+                
+                // Color based on effectiveness
+                const effectiveness = Math.cos(angleRad);
+                const alpha = Math.max(0.2, effectiveness);
+                const hue = effectiveness > 0.7 ? 120 : effectiveness > 0.4 ? 60 : 0; // green to red
+                
+                electronCtx.strokeStyle = `hsla(${hue}, 70%, 60%, ${alpha})`;
+                electronCtx.lineWidth = effectiveness > 0.7 ? 3 : 2;
+                electronCtx.setLineDash([]);
+                
+                electronCtx.beginPath();
+                electronCtx.moveTo(startX, startY);
+                electronCtx.lineTo(startX + dx, startY + dy);
+                electronCtx.stroke();
+                
+                // Draw electron dot
+                electronCtx.fillStyle = `hsla(${hue}, 70%, 60%, ${alpha})`;
+                electronCtx.beginPath();
+                electronCtx.arc(startX + dx, startY + dy, 3, 0, 2 * Math.PI);
+                electronCtx.fill();
+                
+                // Show scattering for short mean free path
+                if (lambda < 2) {
+                    const scatterPoints = Math.floor(Math.sqrt(dx*dx + dy*dy) / (lambda * 10));
+                    for (let j = 1; j <= scatterPoints; j++) {
+                        const scatterX = startX + (dx * j) / (scatterPoints + 1);
+                        const scatterY = startY + (dy * j) / (scatterPoints + 1);
+                        electronCtx.fillStyle = 'yellow';
+                        electronCtx.beginPath();
+                        electronCtx.arc(scatterX, scatterY, 2, 0, 2 * Math.PI);
+                        electronCtx.fill();
+                    }
+                }
+            }
+            
+            // Draw field boundary
+            electronCtx.strokeStyle = 'rgba(0, 212, 255, 0.5)';
+            electronCtx.setLineDash([3, 3]);
+            electronCtx.lineWidth = 1;
+            electronCtx.beginPath();
+            electronCtx.moveTo(0, height/6 + effectiveDepth);
+            electronCtx.lineTo(width, height/6 + effectiveDepth);
+            electronCtx.stroke();
+            
+            // Labels
+            electronCtx.fillStyle = 'white';
+            electronCtx.font = '12px Arial';
+            electronCtx.fillText(`θ = ${angle}°`, 10, height - 30);
+            electronCtx.fillText(`λ = ${lambda.toFixed(1)}δ₀`, 10, height - 10);
+        }
+
+        // Event listeners
+        meanFreePathSlider.addEventListener('input', updateValues);
+        frequencySlider.addEventListener('input', updateValues);
+        electronAngleSlider.addEventListener('input', updateValues);
+
+        // Initial render
+        updateValues();
+    </script>
+</body>
+</html>
